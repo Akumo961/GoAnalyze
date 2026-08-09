@@ -1,0 +1,5 @@
+replicaCount: 3
+ingress:
+  enabled: true
+  host: goanalyze.environment.gov
+

@@ -1,0 +1,138 @@
+from uuid import UUID
+
+from .models import (
+    AIFinding,
+    EnvironmentalReviewRequest,
+    EnvironmentalReviewResult,
+    EvidenceCitation,
+)
+
+REQUIRED_DOCUMENTS_BY_PROJECT = {
+    "industrial_discharge": {
+        "application_form",
+        "site_plan",
+        "effluent_characterization",
+        "mitigation_plan",
+        "public_consultation_record",
+    },
+    "waste_management": {
+        "application_form",
+        "site_plan",
+        "waste_profile",
+        "contingency_plan",
+        "closure_plan",
+    },
+    "water_taking": {
+        "application_form",
+        "hydrogeology_report",
+        "water_balance",
+        "impact_assessment",
+    },
+}
+
+REGULATIONS_BY_PROJECT = {
+    "industrial_discharge": [
+        "Environmental protection authorization discharge limits",
+        "Surface water quality objective assessment",
+        "Spill prevention and contingency planning",
+    ],
+    "waste_management": [
+        "Waste classification and handling requirements",
+        "Financial assurance and closure obligations",
+        "Receiving site compatibility review",
+    ],
+    "water_taking": [
+        "Water taking permit threshold analysis",
+        "Cumulative watershed impact assessment",
+        "Monitoring and reporting condition review",
+    ],
+}
+
+
+class EnvironmentalAuthorizationEngine:
+    def review(
+        self,
+        request: EnvironmentalReviewRequest,
+        available_document_types: set[str],
+        citations: list[EvidenceCitation],
+    ) -> EnvironmentalReviewResult:
+        required = REQUIRED_DOCUMENTS_BY_PROJECT.get(request.project_type, {"application_form"})
+        missing = sorted(required - available_document_types)
+        regulation_mappings = [
+            AIFinding(
+                finding_type="regulation_mapping",
+                statement=regulation,
+                confidence=0.82 if citations else 0.45,
+                citations=citations[:2],
+                grounded=bool(citations),
+                explanation="Mapped from project type, supplied document set, and evidence availability.",
+            )
+            for regulation in REGULATIONS_BY_PROJECT.get(request.project_type, ["General authorization review"])
+        ]
+        compliance_findings = self._compliance_findings(request.case_id, missing, citations)
+        risk_score = self._risk_score(missing, compliance_findings)
+        recommendation = self._recommendation(missing, risk_score)
+        justification = self._justification(missing, risk_score, regulation_mappings)
+        return EnvironmentalReviewResult(
+            case_id=request.case_id,
+            admissible=len(missing) == 0,
+            missing_documents=missing,
+            regulation_mappings=regulation_mappings,
+            compliance_findings=compliance_findings,
+            risk_score=risk_score,
+            recommendation=recommendation,
+            justification=justification,
+            requires_human_review=True,
+        )
+
+    def _compliance_findings(
+        self, case_id: UUID, missing: list[str], citations: list[EvidenceCitation]
+    ) -> list[AIFinding]:
+        if missing:
+            return [
+                AIFinding(
+                    finding_type="missing_document",
+                    statement=f"Required document is missing: {name}",
+                    confidence=0.96,
+                    citations=[],
+                    grounded=True,
+                    explanation=f"Case {case_id} cannot complete admissibility until this item is supplied.",
+                )
+                for name in missing
+            ]
+        return [
+            AIFinding(
+                finding_type="admissibility",
+                statement="Required document set is complete for admissibility screening.",
+                confidence=0.88,
+                citations=citations[:3],
+                grounded=bool(citations),
+                explanation="All required document type markers were present in the case file.",
+            )
+        ]
+
+    def _risk_score(self, missing: list[str], findings: list[AIFinding]) -> float:
+        base = 25.0
+        missing_penalty = min(45.0, len(missing) * 9.0)
+        confidence_penalty = sum(1.0 - finding.confidence for finding in findings) * 5.0
+        return round(min(100.0, base + missing_penalty + confidence_penalty), 2)
+
+    def _recommendation(self, missing: list[str], risk_score: float) -> str:
+        if missing:
+            return "request_additional_information"
+        if risk_score >= 70:
+            return "refer_to_senior_technical_review"
+        return "proceed_to_technical_review"
+
+    def _justification(self, missing: list[str], risk_score: float, mappings: list[AIFinding]) -> str:
+        mapped = "; ".join(mapping.statement for mapping in mappings)
+        if missing:
+            return (
+                f"Admissibility is incomplete because {len(missing)} required item(s) are absent. "
+                f"Mapped obligations: {mapped}. Risk score: {risk_score}."
+            )
+        return f"Admissibility can proceed. Mapped obligations: {mapped}. Risk score: {risk_score}."
+
+
+engine = EnvironmentalAuthorizationEngine()
+

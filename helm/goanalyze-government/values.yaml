@@ -1,0 +1,28 @@
+replicaCount: 3
+
+image:
+  api: goanalyze-government-api:2.0.0
+  frontend: goanalyze-government-frontend:2.0.0
+
+ingress:
+  enabled: true
+  host: goanalyze.example.gov
+
+resources:
+  api:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+externalServices:
+  postgresSecret: goanalyze-postgres
+  redisSecret: goanalyze-redis
+  opensearchSecret: goanalyze-opensearch
+  minioSecret: goanalyze-minio
+  kafkaBootstrapServers: kafka.gov-platform.svc.cluster.local:9092
+  temporalHost: temporal.gov-platform.svc.cluster.local:7233
+  keycloakIssuer: https://identity.example.gov/realms/goanalyze
+

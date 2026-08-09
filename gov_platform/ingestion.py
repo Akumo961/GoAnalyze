@@ -1,0 +1,270 @@
+"""Native document ingestion pipeline.
+
+Every document processed by GoAnalyze moves through a fixed, auditable sequence
+of stages. Each stage is independently pluggable (OCR engine, AI provider,
+vector store, workflow engine) via configuration set through the enterprise
+configuration wizard, but the sequence itself is a first-class part of the
+platform and does not depend on any external document management system.
+
+    Upload -> OCR -> Classification -> Metadata Extraction -> Entity Extraction
+    -> Compliance Analysis -> Risk Scoring -> Vector Indexing -> Workflow Engine
+    -> Audit Logging
+"""
+
+from __future__ import annotations
+
+import re
+import time
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .audit import audit_log
+from .environmental_engine import engine as compliance_engine
+from .models import (
+    AuditEvent,
+    DocumentProcessingResult,
+    DocumentRecord,
+    EnvironmentalReviewRequest,
+    EvidenceCitation,
+    PipelineStage,
+    StageResult,
+)
+from .rag import rag_service
+from .workflows import assignment_engine
+
+_ENTITY_PATTERN = re.compile(r"\b[A-Z][a-zA-Z]{2,}(?:\s[A-Z][a-zA-Z]{2,})*\b")
+
+DOCUMENT_TYPE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "application_form": ("application", "form"),
+    "site_plan": ("site plan", "drawing"),
+    "effluent_characterization": ("effluent", "characterization"),
+    "mitigation_plan": ("mitigation",),
+    "public_consultation_record": ("consultation",),
+    "waste_profile": ("waste profile",),
+    "contingency_plan": ("contingency",),
+    "closure_plan": ("closure",),
+    "hydrogeology_report": ("hydrogeology",),
+    "water_balance": ("water balance",),
+    "impact_assessment": ("impact assessment",),
+}
+
+
+class OcrEngine(Protocol):
+    def extract_text(self, object_uri: str, content_type: str) -> str:
+        ...
+
+
+class NullOcrEngine:
+    """Default OCR engine used until an enterprise OCR engine is configured
+    through the setup wizard. Returns an empty text body rather than making
+    any assumption about document content."""
+
+    def extract_text(self, object_uri: str, content_type: str) -> str:
+        return ""
+
+
+@dataclass
+class IngestionPipeline:
+    ocr_engine: OcrEngine
+
+    async def run(
+        self,
+        record: DocumentRecord,
+        actor: str,
+        trace_id: str,
+        purpose: str,
+        session: AsyncSession,
+        raw_text: str | None = None,
+    ) -> DocumentProcessingResult:
+        result = DocumentProcessingResult(document_id=record.id)
+
+        result.stages.append(self._timed(PipelineStage.upload, self._stage_upload, record))
+
+        ocr_stage, text = self._timed_with_output(
+            PipelineStage.ocr, self._stage_ocr, record, raw_text
+        )
+        result.stages.append(ocr_stage)
+
+        classify_stage, label = self._timed_with_output(
+            PipelineStage.classification, self._stage_classify, text
+        )
+        result.stages.append(classify_stage)
+        result.classification_label = label
+
+        metadata_stage, metadata = self._timed_with_output(
+            PipelineStage.metadata_extraction, self._stage_metadata, record, text
+        )
+        result.stages.append(metadata_stage)
+
+        entity_stage, entities = self._timed_with_output(
+            PipelineStage.entity_extraction, self._stage_entities, text
+        )
+        result.stages.append(entity_stage)
+        result.extracted_entities = entities
+
+        compliance_stage, compliance_output = self._timed_with_output(
+            PipelineStage.compliance_analysis,
+            self._stage_compliance,
+            record,
+            label,
+            metadata,
+        )
+        result.stages.append(compliance_stage)
+
+        risk_stage, risk_score = self._timed_with_output(
+            PipelineStage.risk_scoring, self._stage_risk, compliance_output
+        )
+        result.stages.append(risk_stage)
+        result.risk_score = risk_score
+
+        index_stage = self._timed(PipelineStage.vector_indexing, self._stage_vector_index, record, text)
+        result.stages.append(index_stage)
+
+        workflow_stage, queue = self._timed_with_output(
+            PipelineStage.workflow_engine, self._stage_workflow, record, risk_score
+        )
+        result.stages.append(workflow_stage)
+        result.workflow_queue = queue
+
+        audit_stage = await self._timed_async(
+            PipelineStage.audit_logging, self._stage_audit, record, actor, trace_id, purpose, result, session
+        )
+        result.stages.append(audit_stage)
+
+        result.completed = True
+        return result
+
+    # -- stage implementations -------------------------------------------------
+
+    def _stage_upload(self, record: DocumentRecord) -> dict[str, Any]:
+        return {"object_uri": record.object_uri, "sha256": record.sha256}
+
+    def _stage_ocr(self, record: DocumentRecord, raw_text: str | None) -> tuple[dict[str, Any], str]:
+        text = raw_text if raw_text is not None else self.ocr_engine.extract_text(
+            record.object_uri, record.content_type
+        )
+        return {"character_count": len(text)}, text
+
+    def _stage_classify(self, text: str) -> tuple[dict[str, Any], str]:
+        lowered = text.lower()
+        best_label = "uncategorized"
+        best_score = 0
+        for doc_type, keywords in DOCUMENT_TYPE_KEYWORDS.items():
+            score = sum(1 for keyword in keywords if keyword in lowered)
+            if score > best_score:
+                best_label = doc_type
+                best_score = score
+        return {"label": best_label, "score": best_score}, best_label
+
+    def _stage_metadata(self, record: DocumentRecord, text: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        metadata = dict(record.metadata)
+        metadata.setdefault("filename", record.filename)
+        metadata.setdefault("content_type", record.content_type)
+        metadata["character_count"] = len(text)
+        return metadata, metadata
+
+    def _stage_entities(self, text: str) -> tuple[dict[str, Any], list[str]]:
+        entities = sorted(set(_ENTITY_PATTERN.findall(text)))[:25]
+        return {"entity_count": len(entities)}, entities
+
+    def _stage_compliance(
+        self, record: DocumentRecord, label: str, metadata: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        available_types = {label} if label != "uncategorized" else set()
+        review_request = EnvironmentalReviewRequest(
+            tenant_id=record.tenant_id,
+            case_id=record.case_id or record.id,
+            project_type=str(metadata.get("project_type", "general_review")),
+            location=str(metadata.get("location", "unspecified")),
+            applicant=str(metadata.get("applicant", "unspecified")),
+            documents=[record.id],
+        )
+        citations = [
+            EvidenceCitation(
+                document_id=record.id,
+                version=record.version,
+                chunk_id="0",
+                sha256=record.sha256,
+                excerpt=metadata.get("filename", record.filename),
+            )
+        ]
+        review = compliance_engine.review(review_request, available_types, citations)
+        return review.model_dump(mode="json"), {"risk_score": review.risk_score, "review": review}
+
+    def _stage_risk(self, compliance_output: dict[str, Any]) -> tuple[dict[str, Any], float]:
+        risk_score = float(compliance_output["risk_score"])
+        return {"risk_score": risk_score}, risk_score
+
+    def _stage_vector_index(self, record: DocumentRecord, text: str) -> dict[str, Any]:
+        citation = EvidenceCitation(
+            document_id=record.id,
+            version=record.version,
+            chunk_id="0",
+            sha256=record.sha256,
+            excerpt=text[:600] if text else record.filename,
+        )
+        finding = rag_service.answer(question="__index__", citations=[citation])
+        return {"indexed": True, "grounded": finding.grounded}
+
+    def _stage_workflow(self, record: DocumentRecord, risk_score: float) -> tuple[dict[str, Any], str]:
+        workload = {"technical-review-pool": 4, "senior-review-pool": 1}
+        skill = "senior-review" if risk_score >= 70 else "technical-review"
+        assignment = assignment_engine.assign(record.case_id or record.id, skill, workload)
+        return {
+            "assignee": assignment.assignee,
+            "due_at": assignment.due_at.isoformat(),
+            "status": assignment.status.value,
+        }, assignment.queue
+
+    async def _stage_audit(
+        self,
+        record: DocumentRecord,
+        actor: str,
+        trace_id: str,
+        purpose: str,
+        result: DocumentProcessingResult,
+        session: AsyncSession,
+    ) -> dict[str, Any]:
+        event = await audit_log.append(
+            session,
+            AuditEvent(
+                tenant_id=record.tenant_id,
+                actor=actor,
+                action="document.pipeline_completed",
+                resource_type="document",
+                resource_id=str(record.id),
+                purpose=purpose,
+                trace_id=trace_id,
+                details={
+                    "classification_label": result.classification_label,
+                    "risk_score": result.risk_score,
+                    "entity_count": len(result.extracted_entities),
+                },
+            ),
+        )
+        return {"audit_event_id": str(event.id), "event_hash": event.event_hash}
+
+    # -- helpers -----------------------------------------------------------
+
+    def _timed(self, stage: PipelineStage, fn, *args) -> StageResult:
+        start = time.perf_counter()
+        output = fn(*args)
+        duration_ms = (time.perf_counter() - start) * 1000
+        return StageResult(stage=stage, output=output if isinstance(output, dict) else {}, duration_ms=duration_ms)
+
+    async def _timed_async(self, stage: PipelineStage, fn, *args) -> StageResult:
+        start = time.perf_counter()
+        output = await fn(*args)
+        duration_ms = (time.perf_counter() - start) * 1000
+        return StageResult(stage=stage, output=output if isinstance(output, dict) else {}, duration_ms=duration_ms)
+
+    def _timed_with_output(self, stage: PipelineStage, fn, *args) -> tuple[StageResult, Any]:
+        start = time.perf_counter()
+        stage_output, value = fn(*args)
+        duration_ms = (time.perf_counter() - start) * 1000
+        return StageResult(stage=stage, output=stage_output, duration_ms=duration_ms), value
+
+
+ingestion_pipeline = IngestionPipeline(ocr_engine=NullOcrEngine())

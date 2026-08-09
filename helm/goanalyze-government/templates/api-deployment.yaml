@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: goanalyze-government-api
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: goanalyze-government-api
+  template:
+    metadata:
+      labels:
+        app: goanalyze-government-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: api
+          image: {{ .Values.image.api }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: GOV_KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.externalServices.kafkaBootstrapServers | quote }}
+            - name: GOV_TEMPORAL_TARGET_HOST
+              value: {{ .Values.externalServices.temporalHost | quote }}
+            - name: GOV_KEYCLOAK_ISSUER
+              value: {{ .Values.externalServices.keycloakIssuer | quote }}
+          resources:
+{{ toYaml .Values.resources.api | indent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: goanalyze-government-api
+spec:
+  selector:
+    app: goanalyze-government-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+

@@ -1,0 +1,126 @@
+name: CI
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: pytest
+        run: python -m pytest tests/ -v
+      - name: ruff
+        run: ruff check gov_platform tests migrations
+      - name: mypy
+        run: mypy gov_platform --ignore-missing-imports
+      - name: pip-audit (dependency vulnerabilities)
+        run: |
+          pip install pip-audit
+          pip-audit || echo "::warning::pip-audit found issues -- see FINAL_SECURITY_REPORT.md for the known, accepted ecdsa/python-jose finding"
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: npm install
+        run: npm install
+      - name: npm audit
+        run: npm audit --audit-level=high
+      - name: eslint
+        run: npm run lint
+      - name: npm build
+        run: npm run build
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build -f Dockerfile.production -t goanalyze-api:ci .
+      - name: Build frontend image
+        run: docker build -t goanalyze-frontend:ci ./frontend
+      - name: Generate SBOM (backend)
+        uses: anchore/sbom-action@v0
+        with:
+          image: goanalyze-api:ci
+          format: cyclonedx-json
+          output-file: sbom-backend.cdx.json
+      - name: Scan images for known vulnerabilities
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: goanalyze-api:ci
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-backend
+          path: sbom-backend.cdx.json
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: goanalyze
+          POSTGRES_PASSWORD: ci_test_password
+          POSTGRES_DB: goanalyze
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U goanalyze"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Run Alembic migrations against real Postgres
+        env:
+          GOV_DATABASE_URL: postgresql+asyncpg://goanalyze:ci_test_password@localhost:5432/goanalyze
+          GOV_ENVIRONMENT: development
+        run: alembic upgrade head
+      - name: Start API against real Postgres + Redis
+        env:
+          GOV_DATABASE_URL: postgresql+asyncpg://goanalyze:ci_test_password@localhost:5432/goanalyze
+          GOV_ENVIRONMENT: development
+          GOV_ALLOW_INSECURE_DEV_AUTH: "true"
+          GOV_AUDIT_HASH_SECRET: ci-integration-secret
+          GOV_KEYCLOAK_ISSUER: https://keycloak.invalid/realms/ci
+          GOV_REDIS_URL: redis://localhost:6379/0
+          GOV_RATE_LIMIT_ENABLED: "false"
+        run: |
+          uvicorn gov_platform.main:app --host 0.0.0.0 --port 8080 &
+          for i in $(seq 1 20); do curl -sf http://localhost:8080/ready && break || sleep 1; done
+          curl -sf http://localhost:8080/health
+          curl -sf http://localhost:8080/ready

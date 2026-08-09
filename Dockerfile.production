@@ -1,0 +1,30 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY pyproject.toml /app/
+COPY gov_platform /app/gov_platform
+COPY alembic.ini /app/
+COPY migrations /app/migrations
+
+RUN pip install --no-cache-dir .
+
+# Rootless: matches the base Dockerfile's UID/GID convention.
+USER 65532:65532
+
+EXPOSE 8080
+
+# Readiness (not just liveness) as the container healthcheck: an
+# orchestrator should stop routing traffic to a replica whose database
+# connection is broken, even if the process itself is still alive.
+HEALTHCHECK --interval=15s --timeout=5s --retries=5 --start-period=20s \
+  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/ready', timeout=3)" || exit 1
+
+# Multiple worker processes: the single-worker/SQLite performance test in
+# FINAL_VALIDATION_REPORT.md identified single-worker throughput as a
+# bottleneck. This does not require any new dependency (uvicorn's built-in
+# --workers flag), unlike switching to gunicorn.
+CMD ["uvicorn", "gov_platform.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "4"]
