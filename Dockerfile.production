@@ -6,8 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Apply the latest security updates available in the base Debian image.
+# Explicitly upgrade util-linux to patch CVE-2026-53615
 RUN apt-get update \
     && apt-get upgrade -y \
+    && apt-get install -y --only-upgrade util-linux \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
