@@ -31,7 +31,7 @@ GoAnalyze — Government AI Document Intelligence Platform
 - No hardcoded secrets; production boot fails fast on unsafe configuration (default audit secret, dev-auth bypass enabled, etc.).
 - Storage keys always server-derived (never from client-supplied fields) — no path-traversal surface.
 - Upload size capped (100 MB); `Content-Disposition` filenames safely encoded (CRLF-injection and Unicode both handled).
-- `bandit`, `vulture`, `pip-audit`, `npm audit` all run; see `FINAL_SECURITY_REPORT.md` for the one documented, low-risk, unreachable-code-path finding (`ecdsa`/`python-jose`).
+- The JWT dependency chain has been remediated with `PyJWT[crypto]`; `python-jose` and `ecdsa` are no longer present.
 
 ## Database schema summary
 Four tables: `documents`, `users`, `case_assignments`, `audit_events`, plus `audit_chain_state` (one row per tenant, tracks the audit hash-chain head for concurrency-safe appends). Three linear Alembic migrations (`ec7fec2220cb` → `30f0d74f7e6e` → `ed3a4f8a50b6`), all individually verified to upgrade and downgrade cleanly against real PostgreSQL. Composite indexes on `(tenant_id, timestamp, id)` and `(tenant_id, created_at)` for the paginated audit/search queries — verified via `EXPLAIN ANALYZE` to actually get used.

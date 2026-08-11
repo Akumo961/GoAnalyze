@@ -34,15 +34,11 @@
 | Broken CORS | Not found | untrusted origin not reflected in `Access-Control-Allow-Origin`, tested live |
 | Broken CSP | Not found | `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` present and verified live |
 | Weak secrets | Fixed (prior session) | no hardcoded secrets; production boot fails without a real audit secret |
-| Dependency vulnerabilities | 1 open, documented below | `npm audit`: 0. `pip-audit`: 1 (ecdsa, see below) |
+| Dependency vulnerabilities | Resolved | The JWT dependency chain now uses `PyJWT[crypto]`; `python-jose` and `ecdsa` are absent. |
 
-## New finding this session: `ecdsa` dependency vulnerability
+## JWT dependency remediation
 
-`pip-audit` reported `ecdsa==0.19.2` (a transitive dependency of `python-jose`, used for JWT verification) has a known vulnerability, `PYSEC-2026-1325`. Checked for a fix: **0.19.2 is already the latest available release** -- there is no newer version to upgrade to. This is consistent with `ecdsa`'s maintainers' long-standing public position that pure-Python ECDSA implementations cannot practically guarantee constant-time operations against side-channel/timing attacks, and that they do not intend to "fix" this class of issue in the traditional sense.
-
-**Applicability to GoAnalyze:** our JWT verification code (`gov_platform/security.py`) only ever requests `algorithms=[algorithm]` where `algorithm` comes from the JWKS key's own `alg` field, and every real Keycloak JWKS key observed in this engagement (both the local test JWKS and the real Keycloak-issued one) uses `RS256` (RSA), not any `ES*` (ECDSA) algorithm. `ecdsa`'s vulnerable code path is for elliptic-curve operations specifically -- it is not exercised by this application's actual JWT verification flow, though it remains present as an installed dependency.
-
-**Recommendation, not fixed this session:** either (a) accept this as a documented, low-risk finding since the vulnerable code path isn't reachable, or (b) migrate off `python-jose` (unmaintained upstream, per its own repository status) to `PyJWT` with the `cryptography` backend, which does not depend on the pure-Python `ecdsa` package at all. This is a reasonable follow-up but was not done this session to avoid an untested last-minute dependency swap in the single most security-critical code path in this codebase.
+JWT verification now uses `PyJWT[crypto]` with its `cryptography` backend. The application converts Keycloak JWKS entries to RSA verification keys, pins accepted algorithms to RS256/RS384/RS512, and continues to validate issuer, audience, and expiration.
 
 ## Real-Redis rate limiting -- confirmed with real infrastructure this session
 

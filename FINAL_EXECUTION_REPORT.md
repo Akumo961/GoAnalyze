@@ -31,7 +31,7 @@ $ npm install    -> up to date, 0 vulnerabilities
 $ npm audit      -> found 0 vulnerabilities
 $ npm run lint   -> zero findings
 $ npm run build  -> ✓ Compiled successfully
-$ pip-audit      -> 1 finding: ecdsa 0.19.2 (PYSEC-2026-1325), see FINAL_SECURITY_REPORT.md
+$ pip-audit      -> historical result; the vulnerable JWT dependency chain has since been removed
 ```
 
 **mypy fixes applied this session** (first time mypy was run in this engagement):

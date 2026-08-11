@@ -5,6 +5,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Apply the latest security updates available in the base Debian image.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml /app/
 COPY gov_platform /app/gov_platform
 COPY alembic.ini /app/
@@ -17,14 +23,8 @@ USER 65532:65532
 
 EXPOSE 8080
 
-# Readiness (not just liveness) as the container healthcheck: an
-# orchestrator should stop routing traffic to a replica whose database
-# connection is broken, even if the process itself is still alive.
+# Readiness check.
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 --start-period=20s \
-  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/ready', timeout=3)" || exit 1
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/ready', timeout=3)" || exit 1
 
-# Multiple worker processes: the single-worker/SQLite performance test in
-# FINAL_VALIDATION_REPORT.md identified single-worker throughput as a
-# bottleneck. This does not require any new dependency (uvicorn's built-in
-# --workers flag), unlike switching to gunicorn.
 CMD ["uvicorn", "gov_platform.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "4"]

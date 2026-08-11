@@ -108,7 +108,7 @@ against.
 No real Keycloak was available, but rather than mocking JWT verification
 in-process, a minimal real HTTP server was stood up to serve a genuine
 JWKS document, and the running API fetched it over actual network I/O —
-exercising the real production code path (`httpx` GET, `python-jose`
+exercising the real production code path (`httpx` GET, `PyJWT`
 signature/issuer/audience/expiry checks), not a stub.
 
 | Case | Expected | Actual |

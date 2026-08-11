@@ -25,7 +25,7 @@ jobs:
       - name: pip-audit (dependency vulnerabilities)
         run: |
           pip install pip-audit
-          pip-audit || echo "::warning::pip-audit found issues -- see FINAL_SECURITY_REPORT.md for the known, accepted ecdsa/python-jose finding"
+          pip-audit
 
   frontend:
     runs-on: ubuntu-latest

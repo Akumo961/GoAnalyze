@@ -19,10 +19,19 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import jwt
-from jose.exceptions import ExpiredSignatureError, JWTClaimsError, JWTError
+from jwt import (
+    ExpiredSignatureError,
+    ImmatureSignatureError,
+    InvalidAudienceError,
+    InvalidIssuedAtError,
+    InvalidIssuerError,
+    MissingRequiredClaimError,
+    PyJWTError,
+)
+from jwt.algorithms import RSAAlgorithm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
@@ -121,7 +130,7 @@ async def verify_bearer_token(token: str) -> dict[str, Any]:
 
     try:
         header = jwt.get_unverified_header(token)
-    except JWTError as exc:
+    except PyJWTError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="malformed_token") from exc
 
     kid = header.get("kid")
@@ -136,19 +145,26 @@ async def verify_bearer_token(token: str) -> dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="unknown_signing_key")
 
     try:
+        signing_key = RSAAlgorithm.from_jwk(key)
         claims = jwt.decode(
             token,
-            key,
+            signing_key,
             algorithms=ALLOWED_JWT_ALGORITHMS,
             audience=settings.keycloak_audience,
             issuer=str(settings.keycloak_issuer),
-            options={"require_exp": True},
+            options={"require": ["exp"]},
         )
     except ExpiredSignatureError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="token_expired") from exc
-    except JWTClaimsError as exc:
+    except (
+        InvalidAudienceError,
+        InvalidIssuedAtError,
+        InvalidIssuerError,
+        ImmatureSignatureError,
+        MissingRequiredClaimError,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"invalid_claims:{exc}") from exc
-    except JWTError as exc:
+    except PyJWTError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_signature") from exc
 
     if not claims.get("tenant_id"):

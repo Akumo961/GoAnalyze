@@ -32,7 +32,7 @@ This engagement extended the original 2.0.0 baseline (FastAPI platform API, Next
 - **OpenSearch and MinIO** (live instances) — no binary reachable from this sandbox (confirmed via failed download attempts against the sandbox's network allowlist, not assumed). Both integrations are real and have verified automatic fallback behavior, but their primary code paths have never run against live infrastructure.
 - **GitHub Actions** — `.github/workflows/ci.yml` is YAML-valid and every individual step it runs (pytest/ruff/mypy/npm build+lint) was independently verified to pass in this sandbox, but the workflow has never executed on GitHub's own infrastructure.
 - **TLS** — the Nginx config was validated against a locally-generated self-signed test certificate only; no real CA-issued certificate has been used.
-- **Image vulnerability scanning** — a real `trivy` binary was downloaded and runs, but its vulnerability database is hosted outside this sandbox's network allowlist (confirmed via a direct 403). `pip-audit` and `npm audit` were run instead (both clean, except one documented, low-risk, unreachable-code-path `ecdsa` finding via `python-jose`).
+- **Image vulnerability scanning** — a real `trivy` binary was downloaded and runs, but its vulnerability database is hosted outside this sandbox's network allowlist (confirmed via a direct 403). The prior JWT dependency finding has been remediated with `PyJWT[crypto]`.
 - **Penetration testing** — no human security review has been performed.
 
 ### Security improvements

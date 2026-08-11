@@ -83,10 +83,11 @@ async def client(app):
 # --- shared JWT test helpers -------------------------------------------
 from datetime import UTC, datetime, timedelta
 
+import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from jose import jwk, jwt
+from jwt.algorithms import RSAAlgorithm
 
 from gov_platform import security
 from gov_platform.config import Settings
@@ -113,7 +114,8 @@ def _generate_rsa_keypair():
 @pytest.fixture
 def rsa_keys():
     private_pem, public_pem = _generate_rsa_keypair()
-    public_jwk = jwk.construct(public_pem, algorithm="RS256").to_dict()
+    public_key = serialization.load_pem_public_key(public_pem)
+    public_jwk = RSAAlgorithm.to_jwk(public_key, as_dict=True)
     public_jwk["kid"] = TEST_KEY_ID
     public_jwk["alg"] = "RS256"
     return private_pem, public_jwk
