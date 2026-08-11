@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import jwt
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import (
@@ -43,11 +44,11 @@ from .rate_limit import enforce_identity_rate_limits
 bearer = HTTPBearer(auto_error=False)
 
 # Only accept asymmetric algorithms used by Keycloak.
-ALLOWED_JWT_ALGORITHMS = {
+ALLOWED_JWT_ALGORITHMS: tuple[str, ...] = (
     "RS256",
     "RS384",
     "RS512",
-}
+)
 
 _JWKS_CACHE_TTL_SECONDS = 300
 _jwks_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
@@ -145,7 +146,7 @@ async def verify_bearer_token(token: str) -> dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="unknown_signing_key")
 
     try:
-        signing_key = RSAAlgorithm.from_jwk(key)
+        signing_key = cast(RSAPublicKey, RSAAlgorithm.from_jwk(key))
         claims = jwt.decode(
             token,
             signing_key,
