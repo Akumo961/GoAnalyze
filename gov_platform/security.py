@@ -33,6 +33,13 @@ from .rate_limit import enforce_identity_rate_limits
 
 bearer = HTTPBearer(auto_error=False)
 
+# Only accept asymmetric algorithms used by Keycloak.
+ALLOWED_JWT_ALGORITHMS = {
+    "RS256",
+    "RS384",
+    "RS512",
+}
+
 _JWKS_CACHE_TTL_SECONDS = 300
 _jwks_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
@@ -128,12 +135,11 @@ async def verify_bearer_token(token: str) -> dict[str, Any]:
     if key is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="unknown_signing_key")
 
-    algorithm = key.get("alg", "RS256")
     try:
         claims = jwt.decode(
             token,
             key,
-            algorithms=[algorithm],
+            algorithms=ALLOWED_JWT_ALGORITHMS,
             audience=settings.keycloak_audience,
             issuer=str(settings.keycloak_issuer),
             options={"require_exp": True},

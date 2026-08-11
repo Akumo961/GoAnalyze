@@ -1,43 +1,106 @@
+# ============================================================
+# Environment / secrets
+# ============================================================
 .env
-.env.bak
-.dockerignore
-data/
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# ============================================================
+# IDE
+# ============================================================
+.idea/
+.vscode/
+
+# ============================================================
+# Next.js / Node
+# ============================================================
 node_modules/
-api-test.ps1
-openai_debug.log
-prompt.bak
+.next/
+out/
+.turbo/
+.npm/
+.yarn/
+.pnpm-store/
+
+# ============================================================
+# Local development
+# ============================================================
+.local/
+*.local.*
+
+# ============================================================
+# Application data / generated files
+# ============================================================
+data/
 data bak/
 data_bak/
 data_*/
-.env*
-docker-compose-dev.yml
-public/images/
+chromadb/
+logs/
+*.log
+
+# ============================================================
+# Local/test/debug files
+# ============================================================
+api-test.ps1
+api_test_*.js
+apitest.js
+api_correspondent.js
+openrouter.js
+openai_debug.log
+prompt.bak
+prompt.txt
 delete_all.js
 documents.json
-apitest.js
-logs/*
-api_correspondent.js
-prompt.txt
-api_test_r1.js
-openrouter.js
-/chromadb
+main.py.bak
+main.pyy*
+rag.ejs.old
+ocr_server.py
+surya_models.py
+surya_env/
+
+# ============================================================
+# RAG generated/local files
+# ============================================================
 rag_config.conf
 indexed.conf
 indexing_complete.flag
 RAGZ_README.md
 
-# Local development files
-.local/
-*.local.*
-/chromadb
-/chromadb/*
-rag_config.conf
-indexed.conf
-main.py.bak
-indexing_complete.flag
+# ============================================================
+# Temporary files
+# ============================================================
+*.tmp
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+# Build / IDE / Python artifacts
+.next/
+.idea/
+*.egg-info/
 __pycache__/
-main.pyy*
-rag.ejs.old
-surya_env/
-ocr_server.py
-surya_models.py
+*.pyc
+.pytest_cache/
+.venv/

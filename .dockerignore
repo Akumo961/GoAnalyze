@@ -1,0 +1,11 @@
+.git
+.gitignore
+*.md
+frontend/node_modules
+frontend/.next
+__pycache__/
+*.pyc
+.env
+.env.*
+tests
+.idea
