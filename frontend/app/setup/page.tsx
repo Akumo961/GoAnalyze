@@ -144,7 +144,6 @@ function getApiBase(): string {
 export default function SetupWizardPage() {
   const router = useRouter();
 
-  const [hasMounted, setHasMounted] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [state, setState] = useState<WizardState>(DEFAULT_STATE);
   const [result, setResult] = useState<SetupResponse | null>(null);
@@ -153,13 +152,6 @@ export default function SetupWizardPage() {
 
   const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const submittingRef = useRef(false);
-
-  useEffect(() => {
-    // Client-only mount flag: required to avoid an SSR/CSR markup mismatch,
-    // since whether we've mounted can't be known during server rendering.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setHasMounted(true);
-  }, []);
 
   useEffect(() => {
     if (readSetupCompletedFlag()) {
@@ -293,18 +285,22 @@ export default function SetupWizardPage() {
     }
   }, [router, state]);
 
-  if (!hasMounted) {
-    return null;
-  }
-
   return (
-    <main>
+    <div className="wizardShell" style={{ padding: "32px 24px 60px" }}>
       <header className="topbar">
         <div>
           <p className="eyebrow">Standalone platform setup</p>
           <h1>Enterprise Configuration Wizard</h1>
         </div>
+        <a href="/dashboard" className="setupLink">
+          Back to app
+        </a>
       </header>
+
+      <p style={{ color: "var(--muted)", fontSize: 13, marginTop: -8, marginBottom: 20 }}>
+        Setup is intentionally reachable without signing in — this configures the infrastructure
+        (including the identity provider) that sign-in itself depends on.
+      </p>
 
       <section className="wizardLayout">
         <nav className="wizardSteps" aria-label="Setup steps">
@@ -625,7 +621,7 @@ export default function SetupWizardPage() {
           </nav>
         </div>
       </section>
-    </main>
+    </div>
   );
 }
 

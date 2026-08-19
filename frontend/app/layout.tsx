@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./styles.css";
 
 export const metadata: Metadata = {
-  title: "GoAnalyze Government",
-  description: "Government-grade AI document intelligence console"
+  title: "GoAnalyze | Government Document Intelligence",
+  description: "Government-grade AI document intelligence platform"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -13,4 +13,3 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     </html>
   );
 }
-

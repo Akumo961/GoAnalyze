@@ -1,32 +1,42 @@
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
-# Apply the latest security updates available in the base Debian image.
-# Explicitly upgrade util-linux to patch CVE-2026-53615
+# Apply all security updates available from the Debian repositories.
+# Do not force individual package versions: Debian may not yet provide
+# a fixed version for every CVE reported by vulnerability scanners.
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install -y --only-upgrade util-linux \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+# Install the application metadata first for better Docker layer caching.
 COPY pyproject.toml /app/
+
+# Copy application source and database migration configuration.
 COPY gov_platform /app/gov_platform
 COPY alembic.ini /app/
 COPY migrations /app/migrations
 
-RUN pip install --no-cache-dir .
+# Install GoAnalyze and its Python dependencies.
+RUN pip install .
 
-# Rootless: matches the base Dockerfile's UID/GID convention.
+# Run the application as a non-root user.
 USER 65532:65532
 
 EXPOSE 8080
 
-# Readiness check.
-HEALTHCHECK --interval=15s --timeout=5s --retries=5 --start-period=20s \
+# Container readiness check.
+HEALTHCHECK \
+    --interval=15s \
+    --timeout=5s \
+    --retries=5 \
+    --start-period=20s \
     CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/ready', timeout=3)" || exit 1
 
 CMD ["uvicorn", "gov_platform.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "4"]

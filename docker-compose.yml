@@ -92,7 +92,7 @@ services:
   temporal:
     image: temporalio/auto-setup:1.24.2
     environment:
-      DB: postgresql
+      DB: postgres12
       DB_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
       POSTGRES_PWD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
