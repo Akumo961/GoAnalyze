@@ -1,78 +1,367 @@
-# GoAnalyze — Government AI Document Intelligence Platform
+# GoAnalyze — Enterprise Document Intelligence Platform
 
-GoAnalyze is a standalone, enterprise-grade AI document intelligence platform for government and public-sector organizations. It ingests documents, extracts text and meaning with OCR and AI, classifies and indexes them for retrieval, screens them for regulatory and compliance risk, and routes them through auditable review workflows — all with tenant isolation, attribute-based access control, and a hash-chained audit trail.
 
-GoAnalyze has no dependency on any third-party document management system. It owns its full document lifecycle: storage, search, AI processing, workflow, and audit.
+> Secure AI-powered document analysis and intelligence platform for processing, searching, analyzing, and auditing sensitive documents.
 
-## Platform Capabilities
 
-- **Ingestion pipeline** — Upload → OCR → Classification → Metadata Extraction → Entity Extraction → Compliance Analysis → Risk Scoring → Vector Indexing → Workflow Engine → Audit Logging.
-- **Document search, upload, and download** — full-text search (OpenSearch, with automatic database fallback), original-file upload/download (MinIO, with automatic in-memory fallback), both tenant-isolated and audit-logged.
-- **Evidence-grounded RAG** — hybrid keyword + vector retrieval with citations, source offsets, and confidence scores.
-- **Environmental and regulatory review engine** — admissibility checks, regulation mapping, risk scoring, and recommendations.
-- **Human review workflows** — case queues, assignments, SLA tracking, and escalation.
-- **Immutable audit trail** — append-only, hash-chained audit events for every access and action.
-- **Attribute-based access control** — tenant, ministry, classification, and purpose-of-use policies enforced on every request.
-- **Enterprise identity** — Keycloak SSO/MFA, with support for Azure AD / Microsoft Entra ID federation.
+**RAG** · **LLM** · **Document Intelligence** · **Multi-Tenant Architecture** · **RBAC/ABAC** · **Observability** · **Terraform** · **Kubernetes**
+
+
+## Overview
+
+
+GoAnalyze is an enterprise-oriented document intelligence platform designed to securely process and analyze sensitive documents.
+
+
+The platform combines document processing, search, AI-powered analysis, access control, auditing, observability, and production infrastructure into a single system.
+
+
+## Engineering Highlights
+
+
+- Document ingestion and processing
+
+- AI-powered document analysis
+
+- Retrieval-Augmented Generation
+
+- Semantic search
+
+- Multi-tenant architecture
+
+- RBAC / ABAC authorization
+
+- Tenant isolation
+
+- Audit trails
+
+- Production Docker images
+
+- Kubernetes deployment through Helm
+
+- Infrastructure as Code with Terraform
+
+- Observability
+
+- Automated tests
+
+- Database migrations
+
+- Nginx / reverse proxy configuration
+
 
 ## Architecture
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for logical, data-flow, security, deployment, and AI architecture diagrams.
 
-At a high level:
+```text
 
-- **Frontend** — Next.js/TypeScript operator console (`frontend/`), including the enterprise configuration wizard and case/document review dashboard.
-- **Platform API** — FastAPI service (`gov_platform/`) implementing ingestion, ABAC security, audit, RAG, workflow assignment, and the compliance/risk engine.
-- **Data plane** — PostgreSQL (tenant and case data), OpenSearch (hybrid/vector search), MinIO (object storage), Redis (cache/idempotency).
-- **Identity** — Keycloak, with Azure AD / Microsoft Entra ID federation.
-- **Observability** — OpenTelemetry, Prometheus, Grafana, Loki.
+                    ┌─────────────────────┐
 
-## Getting Started
+                    │      Frontend       │
 
-### Local stack (Docker Compose)
+                    │     Web Client      │
 
-```bash
-docker compose up --build
+                    └──────────┬──────────┘
+
+                               │
+
+                               ▼
+
+                    ┌─────────────────────┐
+
+                    │     Nginx / API     │
+
+                    └──────────┬──────────┘
+
+                               │
+
+                               ▼
+
+                    ┌─────────────────────┐
+
+                    │    Application      │
+
+                    │      Services       │
+
+                    └──────┬───────┬──────┘
+
+                           │       │
+
+                ┌──────────┘       └───────────┐
+
+                ▼                              ▼
+
+       ┌─────────────────┐             ┌─────────────────┐
+
+       │ Document / RAG  │             │ Authorization   │
+
+       │ Pipeline        │             │ RBAC / ABAC     │
+
+       └────────┬────────┘             └─────────────────┘
+
+                │
+
+                ▼
+
+       ┌─────────────────┐
+
+       │ Search / Vector │
+
+       │ Retrieval       │
+
+       └────────┬────────┘
+
+                │
+
+                ▼
+
+       ┌─────────────────┐
+
+       │ LLM Analysis    │
+
+       └─────────────────┘
+
 ```
 
-This starts the platform API, frontend console, PostgreSQL, Redis, OpenSearch, MinIO, Kafka, Temporal, Keycloak, and the observability stack (Prometheus, Grafana, Loki).
 
-For a production-oriented topology (Nginx TLS termination, health-checked services, restart policies, resource limits), see `docker-compose.production.yml` and `Dockerfile.production`.
+## Security Architecture
 
-On first run, open the frontend console and complete the **Enterprise Configuration Wizard** to connect PostgreSQL, MinIO, OpenSearch, Redis, Keycloak (or Azure AD / Microsoft Entra ID), your OCR engine, your AI provider, object storage, and email notifications.
 
-### Platform API only
+Security is a core architectural concern.
 
-```bash
-pip install -e .
-alembic upgrade head   # provisions schema against $GOV_DATABASE_URL
-uvicorn gov_platform.main:app --reload
+
+The platform includes:
+
+- Tenant isolation
+
+- RBAC
+
+- ABAC
+
+- Authentication
+
+- Authorization
+
+- Audit trails
+
+- Protected document workflows
+
+- Environment-based configuration
+
+
+The repository includes dedicated documentation covering security, architecture, bugs, deployment, and production readiness.
+
+
+## AI & Retrieval
+
+
+```text
+
+Document
+
+   │
+
+   ▼
+
+Ingestion
+
+   │
+
+   ▼
+
+Processing
+
+   │
+
+   ▼
+
+Embeddings / Indexing
+
+   │
+
+   ▼
+
+Retrieval
+
+   │
+
+   ▼
+
+Relevant Context
+
+   │
+
+   ▼
+
+LLM Analysis
+
+   │
+
+   ▼
+
+Structured / User-facing Result
+
 ```
 
-### Frontend only
 
-```bash
-cd frontend
-npm install
-npm run dev
+## Infrastructure
+
+
+### Infrastructure as Code
+
+```text
+
+terraform/
+
 ```
 
-### Running tests
 
-```bash
-python -m pytest -q
+### Kubernetes
+
+```text
+
+helm/
+
+└── goanalyze-government/
+
 ```
 
-## Configuration
 
-All configuration is environment-variable driven (see `gov_platform/config.py` for the full list of settings, and `.env.example` for a concrete template with every variable a deployment needs to set), prefixed with `GOV_`, or set interactively through the Enterprise Configuration Wizard in the frontend console. There is no dependency on any external document management system's API URL, token, username, or password.
+### Observability
 
-## Deployment
+```text
 
-- **Kubernetes / Helm** — see `helm/goanalyze-government/`.
-- **Terraform** — see `terraform/`.
-- **Docker Compose** — see `docker-compose.yml`.
+observability/
 
-## License
+```
 
-See [LICENSE](./LICENSE).
+
+### Production Containers
+
+```text
+
+Dockerfile
+
+Dockerfile.production
+
+```
+
+
+### Database
+
+```text
+
+migrations/
+
+```
+
+
+## Testing
+
+
+The repository includes a dedicated test suite:
+
+
+```text
+
+tests/
+
+```
+
+
+Testing is part of the application development workflow rather than an afterthought.
+
+
+## Repository Structure
+
+
+```text
+
+GoAnalyze/
+
+├── frontend/
+
+├── gov_platform/
+
+├── helm/
+
+├── migrations/
+
+├── nginx/
+
+├── observability/
+
+├── terraform/
+
+├── tests/
+
+├── .github/
+
+├── ARCHITECTURE.md
+
+├── BUSINESS_CASE.md
+
+├── EXECUTION_EVIDENCE.md
+
+├── FINAL_DEPLOYMENT_REPORT.md
+
+├── FINAL_OBSERVABILITY_REPORT.md
+
+├── FINAL_PRODUCTION_READINESS.md
+
+├── Dockerfile
+
+├── Dockerfile.production
+
+└── README.md
+
+```
+
+
+## Engineering Focus
+
+
+GoAnalyze demonstrates an approach to AI engineering that goes beyond the model layer:
+
+
+**AI + Security + Retrieval + Backend + Infrastructure + Observability + Testing**
+
+
+## Technology Areas
+
+
+Python · LLMs · RAG · Semantic Search · Document Intelligence · Docker · Kubernetes · Helm · Terraform · Nginx · Database Migrations · Automated Testing · Observability · RBAC · ABAC
+
+
+## Documentation
+
+
+The repository contains additional technical documentation covering:
+
+- Architecture
+
+- Business case
+
+- Deployment
+
+- Observability
+
+- Production readiness
+
+- Database auditing
+
+- Execution evidence
+
+- Bugs and fixes
+
+
+See the corresponding Markdown files in the repository.
+
+
+## Disclaimer
+
+
+This project is a technical portfolio demonstrating enterprise AI architecture and engineering practices.
+
+
+Sensitive production data, credentials, and secrets should never be committed to the repository.
